@@ -1,32 +1,24 @@
-# BHF Data Science Centre research project template
-
-This is a template repository used by the BHF Data Science Centre team when creating new repositories for single-nation CVD-COVID-UK/COVID-IMPACT projects.
-
-# Project name
+# Mental illness and mortality following myocardial infarction
 
 ## Project description
 
-Description will be added here.
+Severe mental illness (SMI), which includes schizophrenia, bipolar disorder and major depression, affects roughly one in ten adults every year in the United Kingdom. People with SMI die 10-20 years earlier than people without SMI. This is mainly due to poorer physical health, in particular a higher risk of cardiovascular disease (CVD), including myocardial infarction (MI).
+
+After an MI, people with SMI are more likely to die than those without SMI. The reasons for this difference in outcome remain unclear and require deeper investigation, including to determine the role of confounding variables such as key comorbidities, as well as the role of receipt of care. The contribution of the latter to the difference in mortality outcome has not yet been explored in depth. Furthermore, we do not know whether any differences in risk of dying after an MI have been affected by the COVID-19 pandemic. It is important to investigate this, to inform responses to this now and in future situations where disruptions of care occur.
+
+This protocol describes the methods we will use to examine SMI and mortality following MI. Separate protocols address SMI and receipt of acute cardiac care following MI (CCU046_01) and incidence of MI, stroke and heart failure by SMI (CCU046_03).
 
 ## How to cite this work
 > Citation details to follow
 
 ## Contents
 
-* [View the analysis code used in NHS England's SDE for England](https://github.com/BHFDSC/CCU0XX_XX/tree/main/code)
-* [View the phenotyping algorithms and codelists used in NHS England's SDE for England](https://github.com/BHFDSC/CCU0XX_XX/tree/main/phenotypes)
-
-* [View the analysis code used in the Scottish National Safe Haven](https://github.com/BHFDSC/CCU0XX_XX/tree/main/code)
-* [View the phenotyping algorithms and codelists used in the Scottish National Safe Haven](https://github.com/BHFDSC/CCU0XX_XX/tree/main/phenotypes)
-
-* [View the analysis code used in the SAIL Databank](https://github.com/BHFDSC/CCU0XX_XX/tree/main/code)
-* [View the phenotyping algorithms and codelists used in the SAIL Databank](https://github.com/BHFDSC/CCU0XX_XX/tree/main/phenotypes)
+* [View the analysis code used in NHS England's SDE for England](https://github.com/BHFDSC/CCU046_02/tree/main/code)
+* [View the phenotyping algorithms and codelists used in NHS England's SDE for England](https://github.com/BHFDSC/CCU046_02/tree/main/phenotypes)
 
 ## Project approval
 
-This project has been approved by the CVD-COVID-UK / COVID-IMPACT Approvals & Oversight Board (project: CCUXXX_XX).
-
-This is a sub-project of [project CCU0XX](https://github.com/BHFDSC/CCU0XX) approved by the CVD-COVID-UK / COVID-IMPACT Approvals & Oversight Board (sub-project: CCU0XX_XX).
+This is a sub-project of [project CCU046](https://github.com/BHFDSC/CCU046) approved by the CVD-COVID-UK / COVID-IMPACT Approvals & Oversight Board (sub-project: CCU046_02).
 
 ## License
 
