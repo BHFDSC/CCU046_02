@@ -1,1 +1,1073 @@
-x
+---
+title: "Describe data"
+author: "K. Fleetwood"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE)
+
+## required packages
+library(ggplot2)
+library(tidyverse)
+library(DBI)
+library(dbplyr)
+library(dplyr)
+library(janitor)
+library(knitr)
+library(arsenal)
+library(lubridate)
+library(ggh4x) # hacks for ggplot
+library(survival)
+library(RColorBrewer)
+
+ccu046_folder <- "~/collab/CCU046"
+ccu046_02_folder <- file.path(ccu046_folder, "CCU046_02")
+pd_folder <- file.path(ccu046_02_folder, "processed_data")
+bc_folder <- file.path(ccu046_02_folder, "baseline_characteristics")
+
+r_folder <- file.path(ccu046_folder, "r")
+# Additional tableby functions to help with rounding to 5
+source(file.path(r_folder, "tableby_functions_19Jan24.R"))  
+# Additional functions to help with rounding to 5
+source(file.path(r_folder, "output_functions_11Jul24.R")) 
+```
+
+```{r load_data, include=FALSE}
+cohort       <- readRDS(file = file.path(pd_folder, "01_cohort.rds"))
+
+st_deviation_no <- c("No acute changes", "Left bundle branch block", "T wave changes only", "Other acute abnormality")
+
+# Alternative labelling for period 4
+p4_lab_lvls <- 
+  c("Nov 2019 - Feb 2020", "Mar 2020 - Jun 2020", "Jul 2020 - Oct 2020",
+    "Nov 2020 - Feb 2021", "Mar 2021 - Jun 2021", "Jul 2021 - Oct 2021", 
+    "Nov 2021 - Feb 2022", "Mar 2022 - Jun 2022", "Jul 2022 - Oct 2022", 
+    "Nov 2022 - Feb 2023")
+
+cohort <- 
+  cohort %>%
+  mutate(
+    st_deviation = 
+      case_when(
+        ecg %in% st_deviation_no  ~ "No",
+        ecg %in% c("ST segment elevation", "ST segment depression") ~ "Yes",
+        is.na(ecg) ~ as.character(NA)
+      ), 
+    crt_log = log(creatinine),
+    troponin_num = as.numeric(peak_troponin),
+    admission_to_cardiac_ward = 
+      case_when(
+        admission_to_cardiac_ward %in% "Died_in_A&E" ~ "No",
+        TRUE ~ admission_to_cardiac_ward
+      ),
+     mi_event_month = floor_date(mi_event_date, "month"),
+    smi_bin =
+      case_when(
+        smi %in% c("Schizophrenia", "Bipolar disorder", "Depression") ~ "Mental illness",
+        smi %in% "No SMI" ~ "No mental illness"
+      ),
+    smi_bin = factor(smi_bin, levels = c("No mental illness", "Mental illness")),
+    period_4_lab = paste(substring(period_4, 1, 10), substring(period_4, 12,100)),
+    period_4_lab = factor(period_4_lab, p4_lab_lvls)
+  )
+
+labels(cohort) <- c(crt_log = "log [Creatinine (micromol/L)]", st_deviation = "ST deviation")
+```
+
+# Background
+This output includes descriptive tables that will be included in a publication about severe mental illness and mortality following myocardial infarction (project CCU046_02).The output has been created from Myocardial Ischaemia National Audit Project (MINAP) data linked to HES, GDPPR, death records and COVID-19 surveillance data.
+
+# STEMI: baseline characteristics by severe mental illness
+
+## Key cohorts
+```{r stemi_key, results = "asis"}
+
+# Full cohort
+stemi <- filter(cohort, mi_type %in% "STEMI")
+stemi_n <- stemi %>% nrow()
+
+# Define complete cases flags
+stemi <- 
+  stemi %>%
+  mutate(
+    cc = !is.na(imd_2019)   & !is.na(ethnic_5) & !is.na(cardiogenic_shock) & !is.na(cardiac_arrest) & 
+      !is.na(creatinine) & !is.na(sbp) & !is.na(heart_rate) & !is.na(procode3),
+    cc2 = !is.na(imd_2019) & !is.na(ethnic_5) & !is.na(procode3),
+    cc_care =   cc &  !is.na(dtb_sum) & !is.na(ctb_sum) & !is.na(prev_all) & !is.na(cardiac_rehab),
+    cc2_care = cc2 &  !is.na(dtb_sum) & !is.na(ctb_sum) & !is.na(prev_all) & !is.na(cardiac_rehab),
+  )
+
+# Full cohort, complete cases
+stemi_cc <- stemi %>% filter(cc)
+stemi_cc_n <- stemi_cc %>% nrow()
+
+# Full cohort, complete cases (sensitivity analysis)
+stemi_cc2 <- stemi %>% filter(cc2)
+stemi_cc2_n <- stemi_cc2 %>% nrow()
+
+# Surviving 30 days (for analysis of one year mortality amongst people surviving 30 days)
+stemi_30 <- filter(stemi, !mort_30)
+stemi_30_n <- stemi_30 %>% nrow()
+
+# Surviving 30 days, complete cases
+# Use same variables for complete cases as per full cohort
+stemi_30_cc <- stemi_30 %>% filter(cc)
+stemi_30_cc_n <- stemi_30_cc %>% nrow()
+
+# Surviving 30 days, complete cases (sensitivity analysis)
+# Use same variables for complete cases as per full cohort
+stemi_30_cc2 <- stemi_30 %>% filter(cc2)
+stemi_30_cc2_n <- stemi_30_cc2 %>% nrow()
+
+# Discharged home
+stemi_home <- filter(stemi, discharge_destination %in% "Home")
+stemi_home_n <- stemi_home %>% nrow()
+
+# Discharged home, complete cases
+# Want to examine effect of care covariates, so additionally include angiogram,
+# prev_all and cardiac rehab
+stemi_home_cc <- stemi_home %>% filter(cc_care)
+stemi_home_cc_n <- stemi_home_cc %>% nrow()
+
+# Discharged home, complete cases (sensitivity analysis)
+stemi_home_cc2 <- stemi_home %>% filter(cc2_care)
+stemi_home_cc2_n <- stemi_home_cc2 %>% nrow()
+
+# Create table
+key_cohorts <- 
+  data.frame(
+    cohort = c("Full cohort", "Survived more than 30 days", "Discharged home"),
+    n = c(stemi_n,       stemi_30_n,       stemi_home_n),
+    n_cc = c(stemi_cc_n,    stemi_30_cc_n,    stemi_home_cc_n), 
+    n_cc2 = c(stemi_cc2_n,    stemi_30_cc2_n,    stemi_home_cc2_n)
+  )
+
+key_cohorts <- 
+  key_cohorts %>%
+  mutate(
+    n_rnd = rnd5(n),
+    #
+    n_cc_rnd = rnd5(n_cc),
+    per_cc = round(100*n_cc_rnd/n_rnd, digits = 1),
+    n_cc_rnd_fmt = paste0(format(n_cc_rnd, digits=6), " (", per_cc, "%)"),
+    #
+    n_cc2_rnd = rnd5(n_cc2),
+    per_cc2 = round(100*n_cc2_rnd/n_rnd, digits = 1),
+    n_cc2_rnd_fmt = paste0(format(n_cc2_rnd, digits=6), " (", per_cc2, "%)")
+  )
+
+kable(
+  dplyr::select(key_cohorts, cohort, n_rnd, n_cc_rnd_fmt, n_cc2_rnd_fmt), 
+  caption = "STEMI: Key cohorts",
+  col.names = c("Cohort", "N", "Complete cases", "Complete cases (SA)")
+)
+```
+
+For the full cohort and the cohort who survived more than 30 days, for the main analyses, the complete cases are based on IMD decile, ethnicity, cardiogenic shock,  cardiac arrest, creatinine, SBP, heart rate
+and hospital.
+
+In a sensitivity analysis excluding the MI characteristics, the complete cases analyses are based on IMD decile, ethnicity and hosptial only.
+
+For the cohort of people discharged home complete cases are 
+additionally based on the processes of care (door to balloon time, call to balloon time, receipt of secondary prevention medication and cardiac rehabilitation).
+
+```{r stemi_smi, results = "asis"}
+
+stemi_smi               <- smi_fun(stemi)
+stemi_cc_smi            <- smi_fun(stemi_cc)
+stemi_cc2_smi           <- smi_fun(stemi_cc2)
+
+stemi_30_smi            <- smi_fun(stemi_30)
+stemi_30_cc_smi         <- smi_fun(stemi_30_cc)
+stemi_30_cc2_smi         <- smi_fun(stemi_30_cc2)
+
+stemi_home_smi          <- smi_fun(stemi_home)
+stemi_home_cc_smi       <- smi_fun(stemi_home_cc)
+stemi_home_cc2_smi       <- smi_fun(stemi_home_cc2)
+
+# STEMI cohorts by SMI
+stemi_cohorts_smi <- 
+  rbind(
+    stemi_smi,
+    stemi_cc_smi,
+    stemi_cc2_smi,
+    #
+    stemi_30_smi, 
+    stemi_30_cc_smi,
+    stemi_30_cc2_smi,
+    #
+    stemi_home_smi, 
+    stemi_home_cc_smi,
+    stemi_home_cc2_smi
+  )
+
+colnames(stemi_cohorts_smi) <- c("Schizophrenia", "Bipolar disorder", "Depression", "No SMI")
+
+stemi_cohorts_smi <- 
+  as.data.frame(stemi_cohorts_smi) %>%
+  mutate(
+    Cohort = rep(c("Full cohort", "Survived more than 30 days", "Discharged home"), each = 3),
+    Including = rep(c("All", "Complete cases", "Complete cases (SA)"), times = 3)
+  ) %>%
+  dplyr::select(Cohort, Including, Schizophrenia, `Bipolar disorder`, Depression, `No SMI`)
+
+kable(stemi_cohorts_smi, caption = "STEMI cohorts by SMI", row.names = FALSE)
+```
+
+## Full cohort
+### Including missing data
+```{r stemi_base, results = "asis"}
+
+# Baseline characteristics table based on full STEMI cohort
+tab1_stemi <- 
+  tableby(
+    smi ~
+      age_mi + sex + includeNA(imd_2019, label = "Missing") + includeNA(ethnic_5, label = "Missing") + 
+      mi_event_year + mi_wd + mi_on + procode3_miss + 
+      comorb_angina + comorb_mi + hx_pci + comorb_hf +  comorb_diab + comorb_crf + comorb_cevd + 
+      includeNA(cardiogenic_shock, label = "Missing") + 
+      includeNA(ecg, label = "Missing") + 
+      includeNA(st_deviation, label = "Missing") + 
+      includeNA(cardiac_arrest, label = "Missing") + 
+      includeNA(cardiac_enzymes_elevated, label = "Missing") +
+      creatinine + crt_log + sbp + heart_rate +  troponin_num +
+      covid + 
+      includeNA(bmi_cat) + includeNA(smoking_cat) +
+      mort_30 + 
+      mort_yr + cod_cvd_yr +
+      includeNA(discharge_destination),
+    data = stemi,
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi$tables$smi$y$stats <- 5*round(tab1_stemi$tables$smi$y$stats/5)
+
+write.csv(summary(tab1_stemi, text = NULL), file = file.path(bc_folder, "03_stemi_full_baseline.csv"))
+
+summary(tab1_stemi, title = "Baseline characteristics for the STEMI cohort, counts rounded to the nearest 5")
+
+# Top 10 causes of death within 30 days, for people who died within 30 days
+tab1_stemi_cod30 <- 
+  tableby(
+    smi ~ cod_top10_mort30_stemi,
+    data = filter(cohort, mi_type %in% "STEMI", mort_30),
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           #tableby_sum = 'Total', 
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi_cod30$tables$smi$y$stats <- 5*round(tab1_stemi_cod30$tables$smi$y$stats/5)
+
+summary(tab1_stemi_cod30, title = "Top 10 causes of mortality within 30 days, STEMI cohort, counts rounded to the nearest 5")
+
+# Top 10 causes of death within a year, for people who died within a year
+tab1_stemi_cod1 <- 
+  tableby(
+    smi ~ cod_top10_mort_yr_stemi,
+    data = filter(stemi, mort_yr),
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi_cod1$tables$smi$y$stats <- 5*round(tab1_stemi_cod1$tables$smi$y$stats/5)
+
+summary(tab1_stemi_cod1, title = "Top 10 causes of mortality within one year, STEMI cohort, counts rounded to the nearest 5")
+```
+
+### Complete cases
+
+```{r stemi_cc_base, results = "asis"}
+
+tab1_stemi_cc <- 
+  tableby(
+    smi ~
+      age_mi + sex + imd_2019 + ethnic_5 + 
+      mi_event_year + mi_wd + mi_on + procode3_miss + 
+      comorb_angina + comorb_mi +
+      hx_pci +
+      comorb_hf +  comorb_diab + 
+      comorb_crf + comorb_cevd + 
+      cardiogenic_shock + 
+      ecg + 
+      st_deviation + 
+      cardiac_arrest + 
+      includeNA(cardiac_enzymes_elevated) +
+      creatinine + crt_log + sbp + heart_rate +  
+      covid + 
+      includeNA(bmi_cat) + includeNA(smoking_cat) +
+      mort_30 + 
+      mort_yr + cod_cvd_yr +
+      includeNA(discharge_destination),
+    data = stemi_cc,
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi_cc$tables$smi$y$stats <- 5*round(tab1_stemi_cc$tables$smi$y$stats/5)
+
+write.csv(
+  summary(tab1_stemi_cc, text = NULL),
+  file = file.path(bc_folder, "03_stemi_cc_baseline.csv")
+)
+
+summary(
+  tab1_stemi_cc, 
+  title = "Baseline characteristics for the STEMI cohort (complete cases), counts rounded to the nearest 5")
+
+```
+
+### Complete cases (sensitivity analysis)
+
+```{r stemi_cc2_base, results = "asis"}
+
+tab1_stemi_cc2 <- 
+  tableby(
+    smi ~
+      age_mi + sex + 
+      imd_2019 + 
+      ethnic_5 + 
+      mi_event_year + mi_wd + mi_on + procode3_miss + 
+      comorb_angina + comorb_mi +
+      hx_pci +
+      comorb_hf +  comorb_diab + 
+      comorb_crf + comorb_cevd + 
+      mort_30 + 
+      mort_yr + cod_cvd_yr +
+      includeNA(discharge_destination),
+    data = stemi_cc2,
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi_cc2$tables$smi$y$stats <- 5*round(tab1_stemi_cc2$tables$smi$y$stats/5)
+
+write.csv(
+  summary(tab1_stemi_cc2, text = NULL),
+  file = file.path(bc_folder, "03_stemi_cc_sa_baseline.csv")
+)
+
+summary(
+  tab1_stemi_cc2, 
+  title = "Baseline characteristics for the STEMI cohort (complete cases, sensitivity analysis), counts rounded to the nearest 5")
+
+```
+
+## People surviving 30 days 
+### Including missing data
+
+```{r stemi_30_base, results = "asis"}
+
+tab1_stemi_30 <- 
+  tableby(
+    smi ~
+      age_mi + sex + 
+      includeNA(imd_2019, label = "Missing") + 
+      includeNA(ethnic_5, label = "Missing") + 
+      mi_event_year + mi_wd + mi_on + procode3_miss + 
+      comorb_angina + comorb_mi +
+      hx_pci +
+      comorb_hf +  comorb_diab + 
+      comorb_crf + comorb_cevd + 
+      includeNA(cardiogenic_shock, label = "Missing") + 
+      includeNA(ecg, label = "Missing") + 
+      includeNA(st_deviation, label = "Missing") + 
+      includeNA(cardiac_arrest, label = "Missing") + 
+      includeNA(cardiac_enzymes_elevated, label = "Missing") +
+      creatinine + crt_log + sbp + heart_rate +  
+      covid + 
+      includeNA(bmi_cat) + includeNA(smoking_cat) +
+      mort_yr + cod_cvd_yr +
+      includeNA(discharge_destination),
+    data = stemi_30,
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           #tableby_sum = 'Total', 
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi_30$tables$smi$y$stats <- 5*round(tab1_stemi_30$tables$smi$y$stats/5)
+
+summary(
+  tab1_stemi_30, 
+  title = "Baseline characteristics for the STEMI cohort, people who survived more than 30 days, counts rounded to the nearest 5"
+)
+
+```
+
+### Complete cases
+
+```{r stemi_30_cc_base, results = "asis"}
+
+tab1_stemi_30_cc <- 
+  tableby(
+    smi ~
+      age_mi + sex + 
+      imd_2019 + 
+      ethnic_5 + 
+      mi_event_year + mi_wd + mi_on + procode3_miss + 
+      comorb_angina + comorb_mi +
+      hx_pci +
+      comorb_hf +  comorb_diab + 
+      comorb_crf + comorb_cevd + 
+      cardiogenic_shock + 
+      ecg + 
+      st_deviation + 
+      cardiac_arrest + 
+      includeNA(cardiac_enzymes_elevated) +
+      creatinine + crt_log + sbp + heart_rate +  
+      covid + 
+      includeNA(bmi_cat) + includeNA(smoking_cat) +
+      mort_yr + cod_cvd_yr +
+      includeNA(discharge_destination),
+    data = stemi_30_cc,
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           #tableby_sum = 'Total', 
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi_30_cc$tables$smi$y$stats <- 5*round(tab1_stemi_30_cc$tables$smi$y$stats/5)
+
+summary(
+  tab1_stemi_30_cc, 
+  title = "Baseline characteristics for the STEMI cohort, people who survived more than 30 days (complete cases), counts rounded to the nearest 5"
+)
+
+```
+
+### Complete cases (sensitivity analysis)
+
+```{r stemi_30_cc2_base, results = "asis"}
+
+tab1_stemi_30_cc2 <- 
+  tableby(
+    smi ~
+      age_mi + sex + 
+      imd_2019 + 
+      ethnic_5 + 
+      mi_event_year + mi_wd + mi_on + procode3_miss + 
+      comorb_angina + comorb_mi +
+      hx_pci +
+      comorb_hf +  comorb_diab + 
+      comorb_crf + comorb_cevd + 
+      mort_yr + cod_cvd_yr +
+      includeNA(discharge_destination),
+    data = stemi_30_cc2,
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi_30_cc2$tables$smi$y$stats <- 5*round(tab1_stemi_30_cc2$tables$smi$y$stats/5)
+
+summary(
+  tab1_stemi_30_cc2, 
+  title = "Baseline characteristics for the STEMI cohort, people who survived more than 30 days (complete cases, sensitivity analysis), counts rounded to the nearest 5"
+)
+
+```
+
+## People discharged home
+### Including missing data
+```{r stemi_home_base, results = "asis"}
+# Additional care covariates for people discharged to home
+
+tab1_stemi_home <- 
+  tableby(
+    smi ~
+      age_mi + sex + 
+      includeNA(imd_2019, label = "Missing") + 
+      includeNA(ethnic_5, label = "Missing") + 
+      mi_event_year + mi_wd + mi_on + procode3_miss + 
+      comorb_angina + comorb_mi +
+      hx_pci +
+      comorb_hf +  comorb_diab + 
+      comorb_crf + comorb_cevd + 
+      includeNA(cardiogenic_shock, label = "Missing") + 
+      includeNA(ecg, label = "Missing") + 
+      includeNA(st_deviation, label = "Missing") + 
+      includeNA(cardiac_arrest, label = "Missing") + 
+      includeNA(cardiac_enzymes_elevated, label = "Missing") +
+      creatinine + crt_log + sbp + heart_rate +  
+      covid + 
+      includeNA(bmi_cat) + includeNA(smoking_cat) +
+      includeNA(ctb_sum) + 
+      includeNA(dtb_sum) + 
+      includeNA(prev_all) + 
+      includeNA(cardiac_rehab) +
+      mort_yr + cod_cvd_yr,
+    data = stemi_home,
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi_home$tables$smi$y$stats <- 5*round(tab1_stemi_home$tables$smi$y$stats/5)
+
+write.csv(
+  summary(tab1_stemi_home, text = NULL),
+  file = file.path(bc_folder, "03_stemi_home_full_baseline.csv")
+)
+
+summary(
+  tab1_stemi_home, 
+  title = "Baseline characteristics for the STEMI cohort, people discharged home, counts rounded to the nearest 5")
+
+```
+
+### Complete cases
+```{r stemi_home_cc_base, results = "asis"}
+
+tab1_stemi_home_cc <- 
+  tableby(
+    smi ~
+      age_mi + sex + imd_2019 + ethnic_5 + 
+      mi_event_year + mi_wd + mi_on + procode3_miss + 
+      comorb_angina + comorb_mi + hx_pci + comorb_hf +  comorb_diab + comorb_crf + comorb_cevd + 
+      cardiogenic_shock + ecg + st_deviation + cardiac_arrest + includeNA(cardiac_enzymes_elevated) +
+      creatinine + crt_log + sbp + heart_rate +  
+      covid + 
+      includeNA(bmi_cat) + includeNA(smoking_cat) +
+      ctb_sum + dtb_sum + prev_all + cardiac_rehab +
+      mort_yr + cod_cvd_yr,
+    data = stemi_home_cc,
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi_home_cc$tables$smi$y$stats <- 5*round(tab1_stemi_home_cc$tables$smi$y$stats/5)
+
+write.csv(summary(tab1_stemi_home_cc, text = NULL), file = file.path(bc_folder, "03_stemi_home_cc_baseline.csv"))
+
+summary(
+  tab1_stemi_home_cc, 
+  title = "Baseline characteristics for the STEMI cohort, people discharged home (complete cases), counts rounded to the nearest 5")
+```
+
+### Complete cases (sensitivity analysis)
+```{r stemi_home_cc2_base, results = "asis"}
+
+tab1_stemi_home_cc2 <- 
+  tableby(
+    smi ~
+      age_mi + sex + imd_2019 + ethnic_5 + 
+      mi_event_year + mi_wd + mi_on + procode3_miss + 
+      comorb_angina + comorb_mi +
+      hx_pci +
+      comorb_hf +  comorb_diab + 
+      comorb_crf + comorb_cevd + 
+      ctb_sum + 
+      dtb_sum + 
+      prev_all + 
+      cardiac_rehab +
+      mort_yr + cod_cvd_yr,
+    data = stemi_home_cc2,
+    control = tab1_cntrls, 
+    digits = 1, 
+    stats.labels = 
+      list(meansd = 'Mean (SD)',
+           medianrange_kf = 'Median [IQR]',
+           n_per_miss = 'Missing',
+           n_per_miss_5 = 'Missing',
+           Nmiss = 'Missing')
+  )
+
+tab1_stemi_home_cc2$tables$smi$y$stats <- 5*round(tab1_stemi_home_cc2$tables$smi$y$stats/5)
+
+write.csv(
+  summary(tab1_stemi_home_cc2, text = NULL),
+  file = file.path(bc_folder, "03_stemi_home_cc_sa_baseline.csv")
+)
+
+summary(
+  tab1_stemi_home_cc2, 
+  title = "Baseline characteristics for the STEMI cohort, people discharged home (complete cases, sensitivity analysis), counts rounded to the nearest 5")
+
+```
+
+
+# STEMI: descriptive plots
+
+## Summary of outcomes by month
+
+```{r stemi_out_month, results = "asis"}
+
+# Count of STEMI by month
+stemi_month_adm <- 
+  stemi %>%
+  tabyl(mi_event_month) %>%
+  mutate(
+    outcome = "MI admissions (N)",
+    n_per = rnd5(n)
+  ) %>%
+  dplyr::select(outcome, mi_event_month, n_per)
+
+# 30-day mortality
+stemi_month_30day <-
+  stemi %>%
+  mutate(
+    mort_30 = ifelse(mort_30, "Yes", "No")
+  ) %>%
+  tabyl(mi_event_month, mort_30) %>%
+  mutate(
+    outcome = "30-day mortality (%)",
+    total = No + Yes,
+    n_per = 100*rnd5(Yes)/rnd5(total)
+  ) %>%
+  dplyr::select(outcome, mi_event_month, n_per)
+
+# 1-year mortality
+stemi_month_1yr <-
+  stemi %>%
+  mutate(
+    mort_yr = ifelse(mort_yr, "Yes", "No")
+  ) %>%
+  tabyl(mi_event_month, mort_yr) %>%
+  mutate(
+    outcome = "1-year mortality (%)",
+    total = No + Yes,
+    n_per = 100*rnd5(Yes)/rnd5(total)
+  ) %>%
+  dplyr::select(outcome, mi_event_month, n_per)
+
+# 1-year CVD mortality
+stemi_month_cvd_1yr <-
+  stemi %>%
+  mutate(
+    mort_cvd_yr = ifelse(mort_cvd_yr, "Yes", "No")
+  ) %>%
+  tabyl(mi_event_month, mort_cvd_yr) %>%
+  mutate(
+    outcome = "1-year CVD mortality (%)",
+    total = No + Yes,
+    n_per = 100*rnd5(Yes)/rnd5(total)
+  ) %>%
+  dplyr::select(outcome, mi_event_month, n_per)
+
+# 1-year mortality amongst people who survived 30 days
+stemi_month_1yr_30 <-
+  stemi_30 %>%
+  mutate(
+    mort_yr = ifelse(mort_yr, "Yes", "No")
+  ) %>%
+  tabyl(mi_event_month, mort_yr) %>%
+  mutate(
+    outcome = "1-year mortality (amongst people surviving 30 days) (%)",
+    total = No + Yes,
+    n_per = 100*rnd5(Yes)/rnd5(total)
+  ) %>%
+  dplyr::select(outcome, mi_event_month, n_per)
+
+# 1-year mortality amongst people discharged home
+stemi_month_1yr_home <-
+  stemi_home %>%
+  mutate(
+    mort_yr = ifelse(mort_yr, "Yes", "No")
+  ) %>%
+  tabyl(mi_event_month, mort_yr) %>%
+  mutate(
+    outcome = "1-year mortality (amongst people discharged home) (%)",
+    total = No + Yes,
+    n_per = 100*rnd5(Yes)/rnd5(total)
+  ) %>%
+  dplyr::select(outcome, mi_event_month, n_per)
+
+# Collate outcomes by month
+stemi_month <- 
+  bind_rows(
+    stemi_month_adm,
+    stemi_month_30day,
+    stemi_month_1yr,
+    stemi_month_cvd_1yr,
+    stemi_month_1yr_30,
+    stemi_month_1yr_home
+  ) %>%
+  mutate(
+    outcome = factor(outcome, levels = outcome_lvls)
+  )
+
+# Save outcomes by month
+write.csv(stemi_month, file.path(bc_folder, "03_stemi_month.csv"), row.names = FALSE)
+
+stemi_month_plot <- 
+  ggplot(stemi_month, aes(x = mi_event_month, y = n_per)) + 
+  geom_line() + 
+  facet_wrap(
+    vars(outcome),
+    ncol = 1,
+    scales = "free_y",
+    strip.position = "top"
+  ) +
+  scale_x_date(date_labels = "%h %Y", expand = c(0,0)) + 
+  theme_bw() + 
+  theme(strip.background = element_rect(fill = "white"), panel.spacing = unit(0 , 'lines')) + 
+  labs(x = "Month", y = "")
+
+stemi_month_plot
+```
+
+## Summary of outcomes by 4-month period
+
+```{r stemi_out_period, results = "asis"}
+
+# Count of STEMI by period and SMI
+stemi_per_adm <- 
+  stemi %>%
+  group_by(period_4, smi) %>%
+  summarise(
+    n = n()
+  ) %>%
+  mutate(
+    outcome = "MI admissions (N)",
+    n_per = rnd5(n)
+  ) %>%
+  dplyr::select(outcome, period_4, smi, n_per)
+
+# 30-day mortality
+stemi_per_30day <-
+  stemi %>%
+  group_by(period_4, smi) %>%
+  summarise(
+    outcome = "30-day mortality (%)",
+    total = n(),
+    Yes = sum(mort_30),
+    n_per = 100*Yes/total
+  ) %>%
+  dplyr::select(outcome, period_4, smi, n_per)
+
+# 1-year mortality
+stemi_per_1yr <-
+  stemi %>%
+  group_by(period_4, smi) %>%
+  summarise(
+    outcome = "1-year mortality (%)",
+    total = n(),
+    Yes = sum(mort_yr),
+    n_per = 100*Yes/total
+  ) %>%
+  dplyr::select(outcome, period_4, smi, n_per)
+
+# 1-year CVD mortality
+stemi_per_cvd_1yr <-
+  stemi %>%
+  group_by(period_4, smi) %>%
+  summarise(
+    outcome = "1-year CVD mortality (%)",
+    total = n(),
+    Yes = sum(mort_cvd_yr),
+    n_per = 100*Yes/total
+  ) %>%
+  dplyr::select(outcome, period_4, smi, n_per)
+
+# 1-year mortality (amongst people surviving 30 days)
+stemi_per_1yr_30 <- 
+  stemi_30 %>%
+  group_by(period_4, smi) %>%
+  summarise(
+    outcome = "1-year mortality (amongst people surviving 30 days) (%)",
+    total = n(),
+    Yes = sum(mort_yr),
+    n_per = 100*Yes/total
+  ) %>%
+  dplyr::select(outcome, period_4, smi, n_per)
+
+# 1-year mortality (amongst people discharged home)
+stemi_per_1yr_home <- 
+  stemi_home %>%
+  group_by(period_4, smi) %>%
+  summarise(
+    outcome = "1-year mortality (amongst people discharged home) (%)",
+    total = n(),
+    Yes = sum(mort_yr),
+    n_per = 100*Yes/total
+  ) %>%
+  dplyr::select(outcome, period_4, smi, n_per)
+
+# Collate outcomes by month
+stemi_per <- 
+  bind_rows(
+    stemi_per_adm,
+    stemi_per_30day,
+    stemi_per_1yr,
+    stemi_per_cvd_1yr,
+    stemi_per_1yr_30,
+    stemi_per_1yr_home
+  ) %>%
+  mutate(
+    outcome = factor(outcome, levels = outcome_lvls),
+    period_4_start = paste("1", substring(period_4, 1, 8)),
+    period_4_date = as.Date(period_4_start, format = "%d %b %Y"),
+  )
+
+# Save outcomes by month
+write.csv(stemi_per, file.path(bc_folder, "03_stemi_period_smi.csv"), row.names = FALSE)
+
+stemi_per_plot <- 
+  ggplot(stemi_per, aes(x = period_4_date, y = n_per, color = smi)) + 
+  geom_line() + 
+  facet_wrap(
+    vars(outcome),
+    ncol = 1,
+    scales = "free_y",
+    strip.position = "top"
+    #labeller = labeller(outcome = outcome_labs)
+  ) +
+  scale_x_date(date_labels = "%h %Y", expand = c(0,0)) + 
+  theme_bw() + 
+  theme(strip.background = element_rect(fill = "white"), panel.spacing = unit(0 , 'lines')) + 
+  labs(x = "Month", y = "")
+
+stemi_per_plot
+```
+
+## Summary of outcomes by 4-month period (binary SMI)
+
+```{r stemi_out_period_bin, results = "asis"}
+
+# Count of STEMI by period and SMI
+stemi_per_bin_adm <- 
+  stemi %>%
+  group_by(period_4, smi_bin) %>%
+  summarise(
+    n = n()
+  ) %>%
+  mutate(
+    outcome = "MI admissions (N)",
+    n_per = rnd5(n)
+  ) %>%
+  dplyr::select(outcome, period_4, smi_bin, n_per)
+
+# 30-day mortality
+stemi_per_bin_30day <-
+  stemi %>%
+  group_by(period_4, smi_bin) %>%
+  summarise(
+    outcome = "30-day mortality (%)",
+    total = n(),
+    Yes = sum(mort_30),
+    n_per = 100*Yes/total,
+    n_per_low = 100*prop.test(Yes, total)$conf.int[1],
+    n_per_upp = 100*prop.test(Yes, total)$conf.int[2]
+  ) %>%
+  dplyr::select(outcome, period_4, smi_bin, n_per, n_per_low, n_per_upp)
+
+# 1-year mortality
+stemi_per_bin_1yr <-
+  stemi %>%
+  group_by(period_4, smi_bin) %>%
+  summarise(
+    outcome = "1-year mortality (%)",
+    total = n(),
+    Yes = sum(mort_yr),
+    n_per = 100*Yes/total,
+    n_per_low = 100*prop.test(Yes, total)$conf.int[1],
+    n_per_upp = 100*prop.test(Yes, total)$conf.int[2]
+  ) %>%
+  dplyr::select(outcome, period_4, smi_bin, n_per, n_per_low, n_per_upp)
+
+# 1-year CVD mortality
+stemi_per_bin_cvd_1yr <-
+  stemi %>%
+  group_by(period_4, smi_bin) %>%
+  summarise(
+    outcome = "1-year CVD mortality (%)",
+    total = n(),
+    Yes = sum(mort_cvd_yr),
+    n_per = 100*Yes/total,
+    n_per_low = 100*prop.test(Yes, total)$conf.int[1],
+    n_per_upp = 100*prop.test(Yes, total)$conf.int[2]
+  ) %>%
+  dplyr::select(outcome, period_4, smi_bin, n_per, n_per_low, n_per_upp)
+
+# 1-year mortality (amongst people surviving 30 days)
+stemi_per_bin_1yr_30 <-
+  stemi_30 %>%
+  group_by(period_4, smi_bin) %>%
+  summarise(
+    outcome = "1-year mortality (amongst people surviving 30 days) (%)",
+    total = n(),
+    Yes = sum(mort_yr),
+    n_per = 100*Yes/total,
+    n_per_low = 100*prop.test(Yes, total)$conf.int[1],
+    n_per_upp = 100*prop.test(Yes, total)$conf.int[2]
+  ) %>%
+  dplyr::select(outcome, period_4, smi_bin, n_per, n_per_low, n_per_upp)
+
+# 1-year mortality (amongst people discharged home)
+stemi_per_bin_1yr_home <-
+  stemi_home %>%
+  group_by(period_4, smi_bin) %>%
+  summarise(
+    outcome = "1-year mortality (amongst people discharged home) (%)",
+    total = n(),
+    Yes = sum(mort_yr),
+    n_per = 100*Yes/total,
+    n_per_low = 100*prop.test(Yes, total)$conf.int[1],
+    n_per_upp = 100*prop.test(Yes, total)$conf.int[2]
+  ) %>%
+  dplyr::select(outcome, period_4, smi_bin, n_per, n_per_low, n_per_upp)
+
+# Collate outcomes by month
+stemi_per_bin <- 
+  bind_rows(
+    stemi_per_bin_adm,
+    stemi_per_bin_30day,
+    stemi_per_bin_1yr,
+    stemi_per_bin_cvd_1yr,
+    stemi_per_bin_1yr_30,
+    stemi_per_bin_1yr_home
+  ) %>%
+  mutate(
+    outcome = factor(outcome, levels = outcome_lvls),
+    period_4_start = paste("1", substring(period_4, 1, 8)),
+    period_4_date = as.Date(period_4_start, format = "%d %b %Y"),
+  )
+
+# Save outcomes by month
+write.csv(stemi_per_bin, file.path(bc_folder, "03_stemi_period_smi_bin.csv"), row.names = FALSE)
+
+stemi_per_bin_plot <- 
+  ggplot(stemi_per_bin, aes(x = period_4_date, y = n_per, color = smi_bin)) + 
+  geom_line() + 
+  facet_wrap(
+    vars(outcome),
+    ncol = 1,
+    scales = "free_y",
+    strip.position = "top"
+  ) +
+  scale_x_date(date_labels = "%h %Y", expand = c(0,0)) + 
+  theme_bw() + 
+  theme(strip.background = element_rect(fill = "white"), panel.spacing = unit(0 , 'lines')) + 
+  labs(x = "Month", y = "")
+
+stemi_per_bin_plot
+```
+## Kaplan Meier plot by SMI
+
+```{r stemi_km_smi, results = "asis"}
+
+# All-cause mortality ---------------------------------------------------------
+stemi_smi_sf <- survfit(Surv(mort_yr_days, mort_yr) ~ smi, data = stemi) # Create survit object
+
+# Kaplan meier plot
+plot(stemi_smi_sf, col = 1:4, xlab = "Time (days)", ylab = "Survival", ylim = c(0.8, 1))
+legend("topright", legend = levels(cohort$smi), col = 1:4, lty =1)
+
+pdf(file.path(bc_folder, "03_stemi_km_mort_smi.pdf"), height = 7, width = 7)
+plot(stemi_smi_sf, col = 1:4, xlab = "Time (days)", ylab = "Survival", ylim = c(0.8, 1))
+legend("topright", legend = levels(cohort$smi), col = 1:4, lty =1)
+dev.off()
+
+stemi_smi_sf_out <- as.df.sf(stemi_smi_sf)
+write.csv(stemi_smi_sf_out, file.path(bc_folder, "03_stemi_smi_sf.csv"))
+
+# CVD-mortality ---------------------------------------------------------------
+stemi_cvd_smi_sf <- survfit(Surv(mort_yr_days, mort_cvd_yr) ~ smi, data = stemi) # Create survfit object
+
+# Kaplan meier plot
+plot(stemi_cvd_smi_sf, col = 1:4, xlab = "Time (days)", ylab = "Survival", ylim = c(0.85, 1))
+legend("topright", legend = levels(cohort$smi), col = 1:4, lty =1)
+
+pdf(file.path(bc_folder, "03_stemi_km_cvd_mort_smi.pdf"), height = 7, width = 7)
+plot(stemi_cvd_smi_sf, col = 1:4, xlab = "Time (days)", ylab = "Survival", ylim = c(0.85, 1))
+legend("topright", legend = levels(cohort$smi), col = 1:4, lty =1)
+dev.off()
+
+stemi_cvd_smi_sf_out <- as.df.sf(stemi_cvd_smi_sf)
+write.csv(stemi_cvd_smi_sf_out, file.path(bc_folder, "03_stemi_cvd_smi_sf.csv"))
+```
+
+## Kaplan Meier plot by time period
+
+```{r stemi_km_per, results = "asis"}
+
+# All-cause mortality ----------------------------
+stemi_per_sf <- survfit(Surv(mort_yr_days, mort_yr) ~ period_4_lab, data = stemi) # create survfit object
+
+# Kaplan meier plot
+plot(stemi_per_sf, col = brewer.pal(n = 10, name = "Paired"), xlab = "Time (days)", ylab = "Survival", ylim = c(0.85, 1))
+legend("topright", legend = levels(cohort$period_4_lab), col = brewer.pal(n = 10, name = "Paired"), lty =1, cex = 0.5)
+
+pdf(file.path(bc_folder, "03_stemi_km_mort_per.pdf"), height = 7, width = 7)
+plot(stemi_per_sf, col = brewer.pal(n = 10, name = "Paired"), xlab = "Time (days)", ylab = "Survival", ylim = c(0.85, 1))
+legend("topright", legend = levels(cohort$period_4_lab), col = brewer.pal(n = 10, name = "Paired"), lty =1, cex = 0.8)
+dev.off()
+
+stemi_per_sf_out <- as.df.sf(stemi_per_sf)
+write.csv(stemi_per_sf_out, file.path(bc_folder, "03_stemi_per_sf.csv"))
+
+# CVD-mortality ----------------------------------
+stemi_per_cvd_sf <- survfit(Surv(mort_yr_days, mort_cvd_yr)  ~ period_4_lab, data = stemi) # create survfit object
+
+# Kaplan Meier plot
+plot(stemi_per_cvd_sf, col = brewer.pal(n = 10, name = "Paired"), xlab = "Time (days)", ylab = "Survival", ylim = c(0.89, 1))
+legend("topright", legend = levels(cohort$period_4_lab), col = brewer.pal(n = 10, name = "Paired"), lty =1, cex = 0.5)
+
+pdf(file.path(bc_folder, "03_stemi_km_mort_cvd_per.pdf"), height = 7, width = 7)
+plot(stemi_per_cvd_sf, col = brewer.pal(n = 10, name = "Paired"), xlab = "Time (days)", ylab = "Survival", ylim = c(0.89, 1))
+legend("topright", legend = levels(cohort$period_4_lab), col = brewer.pal(n = 10, name = "Paired"), lty =1, cex = 0.8)
+dev.off()
+```
