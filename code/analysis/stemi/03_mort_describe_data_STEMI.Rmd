@@ -36,6 +36,8 @@ r_folder <- file.path(ccu046_folder, "r")
 source(file.path(r_folder, "tableby_functions_19Jan24.R"))  
 # Additional functions to help with rounding to 5
 source(file.path(r_folder, "output_functions_11Jul24.R")) 
+# Additional functions to help with description
+source(file.path(r_folder, "descriptive_functions.R"))
 ```
 
 ```{r load_data, include=FALSE}
