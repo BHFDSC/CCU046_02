@@ -1,5 +1,7 @@
 # Mental illness and mortality following myocardial infarction
 
+**Kelly Fleetwood, John Nolan, Colin Berry, Debbie Cavers, Stewart W Mercer, Sandosh Padmanabhan, Daniel J Smith, Robert Stewart, Amanda Vettini, Caroline A Jackson, on behalf of the CVD-COVID-UK/COVID-IMPACT Consortium** 
+
 ## Project description
 
 Severe mental illness (SMI), which includes schizophrenia, bipolar disorder and major depression, affects roughly one in ten adults every year in the United Kingdom. People with SMI die 10-20 years earlier than people without SMI. This is mainly due to poorer physical health, in particular a higher risk of cardiovascular disease (CVD), including myocardial infarction (MI).
@@ -9,7 +11,7 @@ After an MI, people with SMI are more likely to die than those without SMI. The 
 This protocol describes the methods we will use to examine SMI and mortality following MI. Separate protocols address SMI and receipt of acute cardiac care following MI (CCU046_01) and incidence of MI, stroke and heart failure by SMI (CCU046_03).
 
 ## How to cite this work
-> Citation details to follow
+Preprint available here: https://doi.org/10.1101/2025.11.21.25340653
 
 ## Contents
 
