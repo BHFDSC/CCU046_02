@@ -1,4 +1,4 @@
-A list of all phenotypes with links to the HDR UK Phenoptype Library is provided in https://github.com/BHFDSC/CCU046_02/blob/main/phenotypes/phenotypes.csv. A more detailed descriptoin of the phenotypes is provided below.
+A list of all phenotypes with links to the HDR UK Phenoptype Library is provided in [phenotypes.csv](https://github.com/BHFDSC/CCU046_02/blob/main/phenotypes/phenotypes.csv). A more detailed descriptoin of the phenotypes is provided below.
 
 # Mental disorders
 
